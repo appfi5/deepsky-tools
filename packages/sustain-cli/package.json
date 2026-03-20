@@ -1,0 +1,37 @@
+{
+  "name": "@superise/market-sustain-cli",
+  "version": "0.0.1-rc.1",
+  "private": true,
+  "packageManager": "bun@1.3.9",
+  "type": "module",
+  "main": "./dist/lib.cjs",
+  "module": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "bin": {
+    "superise": "./bin/superise.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "import": "./dist/lib.js",
+      "require": "./dist/lib.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "rm -rf bin && bun build --target node --outfile bin/superise.js src/cli.ts && bunx tsup src/lib.ts --format esm,cjs --dts --clean",
+    "build:bin": "bun build --compile --outfile bin/superise src/cli.ts",
+    "start": "node bin/superise.js",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}
