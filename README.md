@@ -5,7 +5,7 @@ SupeRISE Market Tools is a small repository for market sustain operations. It pa
 ## What It Provides
 
 - A standalone `superise market-sustain` CLI for SupeRISE Market sustain work
-- An installable `market-sustain-cli` skill that teaches an agent how to run the sustain loop
+- An installable `superise-market-sustain` skill that teaches an agent how to run the sustain loop
 - One-click OpenClaw setup for recurring sustain reviews and retry jobs
 
 ## Quick Start
@@ -16,13 +16,13 @@ If your agent client supports skills, start there first. The skill can teach the
 
 This repository currently provides one installable skill:
 
-- `market-sustain-cli`: operate `superise market-sustain`, inspect market state, choose top-up actions, and set up recurring sustain checks
+- `superise-market-sustain`: operate `superise market-sustain`, inspect market state, choose top-up actions, and set up recurring sustain checks
 
 Install it directly from this repository:
 
 ```bash
 npx skills add https://github.com/appfi5/superise-market-tools --list
-npx skills add https://github.com/appfi5/superise-market-tools --skill market-sustain-cli
+npx skills add https://github.com/appfi5/superise-market-tools --skill superise-market-sustain
 ```
 
 If your client uses a global skill directory, add `-g`. Restart the client after installation so the new skill is loaded.

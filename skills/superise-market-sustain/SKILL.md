@@ -1,5 +1,5 @@
 ---
-name: market-sustain-cli
+name: superise-market-sustain
 description: Operate `superise market-sustain` for SupeRISE Market self-supervision. Use when the user asks the agent to keep itself alive, monitor balance or runway, inspect market pricing, top up a market account, retry pending top-up orders, clear market auth state, or change sustain guardrails and config.
 ---
 

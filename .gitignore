@@ -12,3 +12,6 @@ packages/*/bin/
 coverage/
 *.log
 *.tsbuildinfo
+
+.npmrc
+packages/*/.npmrc
