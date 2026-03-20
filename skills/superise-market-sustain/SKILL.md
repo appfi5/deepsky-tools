@@ -31,6 +31,23 @@ Do not assume a local workspace checkout is already wired into `PATH`. The suppo
 - Prefer explicit sustain commands over ad hoc wallet transfers for market recharge.
 - Report wallet-side auth dependencies clearly instead of inventing local workarounds.
 
+## Units And Money Semantics
+
+Do not mix up market balance and recharge input units.
+
+- `health-check.balance` is the market-side account balance. Treat it as the platform's USD-like balance or credits, not as CKB.
+- `criticalBalance` and `lowBalance` are thresholds on that market-side balance, not on wallet CKB.
+- `top-up <amount>` always takes a CKB amount as input.
+- `exchangeAmount` from order creation or top-up results is the platform-side credited amount after exchange-rate conversion, not the requested CKB amount.
+- `newBalance` is again the market-side balance after the credited amount is applied.
+
+When reporting outcomes:
+
+- State the requested top-up amount in CKB.
+- State the credited or exchanged amount separately when `exchangeAmount` is available.
+- Do not describe `exchangeAmount` as "only X CKB arrived". It is not a CKB field.
+- If the wallet rejects or limits a transfer, quote the exact wallet error instead of inferring a hidden local limit.
+
 ## Autonomous Delegation
 
 If the user says anything like:
@@ -107,6 +124,7 @@ Follow these rules:
 - Use `top-up` for market recharge because it creates the order, transfers CKB, and submits the tx hash as one flow.
 - Use `retry-orders` when transfer likely succeeded but market-side submission or finalization did not complete cleanly.
 - Use `logout` to clear stale local market auth state.
+- Keep requested CKB, credited market amount, and resulting market balance separate in your reasoning and reporting.
 
 ## Survival Loop
 
@@ -121,6 +139,22 @@ When the user delegates self-supervision:
 7. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
 8. If a recharge looked partial, run `superise market-sustain retry-orders --json`.
 9. Report the decision and the reason.
+
+## Threshold Strategy
+
+Unless the user overrides policy, use the configured thresholds like this:
+
+- `healthy`: balance is above `lowBalance`. Stay quiet. Do not top up unless there is some unusual context the user explicitly cares about.
+- `low`: balance is at or below `lowBalance` but still above `criticalBalance`. Treat this as a preventive-action zone. Check forecast, inspect pricing context if useful, and usually decide for yourself whether a preventive top-up reduces interruption risk. Prefer self-handling over asking the user.
+- `critical`: balance is at or below `criticalBalance`. Treat this as immediate-action territory. Choose a top-up amount and execute it by default so the market account recovers before work is interrupted.
+
+Extra rules:
+
+- Compare thresholds against market balance only, never against wallet CKB.
+- A recharge request is expressed in CKB, but the success criterion is whether market balance recovers after exchange-rate conversion.
+- If the wallet rejects the requested CKB amount, surface the wallet rejection exactly and adjust from there instead of inventing a local max.
+- If forecast shows the runway is too short, treat that as justification to act more aggressively even if the current status is only `low`.
+- Only interrupt the user when autonomy is blocked: wallet failures, platform failures, authentication failures, or manual-review situations.
 
 ## Sustain Config For Decisions
 
@@ -159,6 +193,8 @@ Guidelines:
 - Prefer enough runway for the user's near-term usage.
 - If the user is actively relying on the agent, bias toward fewer future interruptions.
 - If the wallet rejects the amount, surface the exact rejection and adjust from there.
+- Remember that the top-up input is CKB while the target outcome is market-side balance recovery after conversion.
+- When in doubt, choose the amount that reduces the chance of another near-term interruption rather than the amount that minimizes immediate spend.
 
 ## Scheduled Runs
 
@@ -190,8 +226,9 @@ If the user explicitly asks for `--session main`, still use `setup openclaw`, bu
 When you describe sustain work to the user:
 
 - Call it a sustain check or survival review.
-- Report the decision, balance, and next action clearly.
+- Report the decision, market balance, requested CKB amount, credited amount, and next action clearly.
 - Prefer concrete outcomes over internal deliberation.
+- Default to quiet success. Only send an update when you took a material action, hit an exception, or need human help.
 
 ## Auth Assumption
 
