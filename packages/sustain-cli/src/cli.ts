@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { registerSetupCommands } from "./commands/setup";
 import { registerSustainCommands } from "./commands/sustain";
 import { PACKAGE_VERSION } from "./utils/constants";
 import { toErrorMessage } from "./utils/errors";
@@ -7,17 +8,23 @@ import { toErrorMessage } from "./utils/errors";
 const program = new Command();
 
 program
-  .name("superise")
-  .description("SupeRISE Market CLI")
+  .name("deepsky")
+  .description("Deepsky CLI")
   .version(PACKAGE_VERSION)
   .showHelpAfterError();
 
-const marketSustainCommand = program
-  .command("market-sustain")
-  .description("Sustain operations for SupeRISE Market")
+const sustainCommand = program
+  .command("sustain")
+  .description("Sustain operations for Deepsky")
   .showHelpAfterError();
 
-registerSustainCommands(marketSustainCommand);
+const setupCommand = program
+  .command("setup")
+  .description("Setup integrations for Deepsky")
+  .showHelpAfterError();
+
+registerSustainCommands(sustainCommand);
+registerSetupCommands(setupCommand);
 
 program.parseAsync(process.argv).catch((error) => {
   const json = process.argv.includes("--json");

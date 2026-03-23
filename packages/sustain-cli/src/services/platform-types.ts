@@ -46,6 +46,14 @@ export type PlatformModelQuotation = {
   price: number;
 };
 
+export type ModelApiKeyVo = {
+  id: string;
+  name: string;
+  apiKey: string;
+  isRevoked: boolean;
+  createdAt: string;
+};
+
 export type ModelWithPricing = {
   platformId: string;
   shortName: string;

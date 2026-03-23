@@ -3,6 +3,7 @@ import { SustainConfigStore } from "../core/sustain/config";
 import type { BalanceStatus } from "./platform-types";
 import type {
   CreateOrderVo,
+  ModelApiKeyVo,
   ModelWithPricing,
   PlatformAiModel,
   PlatformModelQuotation,
@@ -112,6 +113,74 @@ export class MarketClient {
       },
       true,
     );
+  }
+
+  async createModelApiKey(
+    name: string,
+    baseUrl = this.configStore.get("platformBaseUrl"),
+  ): Promise<string> {
+    const id = await this.requestPlatform<string>(
+      baseUrl,
+      "/api/v1/model-api-keys/create",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name }),
+      },
+      true,
+    );
+
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new Error("Model API key creation did not return a valid id");
+    }
+
+    return id.trim();
+  }
+
+  async setModelApiKeyPriceRange(
+    input: {
+      id: string;
+      lowestInputPrice: number;
+      highestInputPrice: number;
+      lowestOutputPrice: number;
+      highestOutputPrice: number;
+    },
+    baseUrl = this.configStore.get("platformBaseUrl"),
+  ): Promise<void> {
+    await this.requestPlatform<boolean>(
+      baseUrl,
+      "/api/v1/model-api-keys/set-price-range",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(input),
+      },
+      true,
+    );
+  }
+
+  async getModelApiKey(
+    id: string,
+    baseUrl = this.configStore.get("platformBaseUrl"),
+  ): Promise<ModelApiKeyVo> {
+    const value = await this.requestPlatform<ModelApiKeyVo>(
+      baseUrl,
+      `/api/v1/model-api-keys/${encodeURIComponent(id)}`,
+      {
+        method: "GET",
+      },
+      true,
+    );
+
+    if (typeof value.apiKey !== "string" || value.apiKey.trim().length === 0) {
+      throw new Error(`Model API key ${id} does not contain a usable apiKey value`);
+    }
+
+    return value;
   }
 
   private async fetchAllModels(baseUrl: string): Promise<PlatformAiModel[]> {

@@ -11,8 +11,12 @@ const {
   SustainEngine,
   calculateBurnRate,
   buildSustainOpenClawJobs,
+  configureDeepskyOpenClaw,
+  createOpenClawModelRef,
   createOpenClawCli,
   createDefaultPaths,
+  readOpenClawConfig,
+  updateDeepskyProviderConfig,
 } = require("../dist/lib.cjs");
 
 function createTempPaths() {
@@ -246,6 +250,23 @@ test("WalletMcpClient reads market publicKey from nervos.identity", async () => 
     publicKey,
     "0x034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
   );
+});
+
+test("WalletMcpClient reports wallet MCP connection failures with configured URL", async () => {
+  const configStore = new SustainConfigStore(createTempPaths(), {
+    SUPERISE_WALLET_MCP_URL: "http://127.0.0.1:1/mcp",
+  });
+  const client = new WalletMcpClient(configStore);
+
+  await assert.rejects(async () => {
+    try {
+      await client.getNervosAddress();
+    } catch (error) {
+      assert.match(String(error), /Unable to connect to wallet MCP at http:\/\/127\.0\.0\.1:1\/mcp\./);
+      assert.match(String(error), /SUPERISE_WALLET_MCP_URL/);
+      throw error;
+    }
+  });
 });
 
 test("MarketAuthService reports missing wallet publicKey capability when config does not provide one", async () => {
@@ -584,22 +605,22 @@ test("buildSustainOpenClawJobs returns sustain tick and retry jobs", () => {
     })),
     [
       {
-        name: "market-sustain-tick",
+        name: "deepsky-sustain-tick",
         every: "7m",
         session: "isolated",
         announce: true,
       },
       {
-        name: "market-sustain-retry-orders",
+        name: "deepsky-sustain-retry-orders",
         every: "11m",
         session: "isolated",
         announce: true,
       },
     ],
   );
-  assert.match(jobs[0].message, /superise market-sustain health-check --json/);
-  assert.match(jobs[0].message, /superise market-sustain top-up <amount>/);
-  assert.match(jobs[1].message, /superise market-sustain retry-orders --json/);
+  assert.match(jobs[0].message, /deepsky sustain health-check --json/);
+  assert.match(jobs[0].message, /deepsky sustain top-up <amount>/);
+  assert.match(jobs[1].message, /deepsky sustain retry-orders --json/);
 });
 
 test("buildSustainOpenClawJobs disables announce for main session jobs", () => {
@@ -612,7 +633,7 @@ test("buildSustainOpenClawJobs disables announce for main session jobs", () => {
   assert.equal(jobs[1].announce, false);
 });
 
-test("OpenClaw setup replaces existing sustain jobs and registers isolated message jobs", async () => {
+test("OpenClaw setup replaces legacy sustain jobs and registers isolated message jobs", async () => {
   const calls = [];
   const jobs = [
     { id: "job_1", name: "market-sustain-tick" },
@@ -666,6 +687,14 @@ test("OpenClaw setup replaces existing sustain jobs and registers isolated messa
     ["job_1", "job_3"],
   );
   assert.equal(result.created.length, 2);
+  assert.deepEqual(
+    result.jobs.map((job) => job.name),
+    ["deepsky-sustain-tick", "deepsky-sustain-retry-orders"],
+  );
+  assert.deepEqual(
+    jobs.map((job) => job.name),
+    ["unrelated-job", "deepsky-sustain-tick", "deepsky-sustain-retry-orders"],
+  );
   assert.deepEqual(
     calls.map((args) => args.slice(0, 3)),
     [
@@ -766,4 +795,150 @@ test("createDefaultPaths defaults to the .superise home directory", () => {
 
   assert.equal(path.basename(paths.riseDir), ".superise");
   assert.equal(path.basename(path.dirname(paths.configPath)), "sustain");
+});
+
+test("updateDeepskyProviderConfig installs provider and preserves unrelated config", () => {
+  const next = updateDeepskyProviderConfig(
+    {
+      telemetry: {
+        enabled: true,
+      },
+      models: {
+        providers: {
+          other: {
+            api: "openai-completions",
+            models: [{ id: "other-model", name: "Other Model" }],
+          },
+        },
+      },
+      agents: {
+        defaults: {},
+      },
+    },
+    {
+      apiKey: "sk-test",
+      models: [
+        { id: "qwen3.5-27b", name: "qwen3.5-27b" },
+        { id: "qwen3.5-27b", name: "duplicate should be removed" },
+      ],
+    },
+  );
+
+  assert.equal(next.telemetry.enabled, true);
+  assert.equal(next.models.providers.other.api, "openai-completions");
+  assert.deepEqual(next.models.providers.deepsky, {
+    baseUrl: "https://superise-market.superise.net/v1",
+    apiKey: "sk-test",
+    api: "openai-completions",
+    models: [{ id: "qwen3.5-27b", name: "qwen3.5-27b" }],
+  });
+});
+
+test("updateDeepskyProviderConfig merges selected model into allowlist and primary selection", () => {
+  const next = updateDeepskyProviderConfig(
+    {
+      agents: {
+        defaults: {
+          models: {
+            "deepsky/old-model": {},
+            "openai/gpt-4.1": {},
+          },
+          model: {
+            primary: "deepsky/old-model",
+            fallbacks: ["deepsky/older-model", "openai/gpt-4o-mini"],
+          },
+        },
+      },
+    },
+    {
+      apiKey: "sk-test",
+      models: [{ id: "qwen3.5-27b", name: "Qwen 3.5 27B" }],
+      selectedModelId: "qwen3.5-27b",
+    },
+  );
+
+  assert.deepEqual(next.agents.defaults.models, {
+    "openai/gpt-4.1": {},
+    "deepsky/qwen3.5-27b": {},
+  });
+  assert.equal(next.agents.defaults.model.primary, "deepsky/qwen3.5-27b");
+  assert.deepEqual(next.agents.defaults.model.fallbacks, ["openai/gpt-4o-mini"]);
+});
+
+test("updateDeepskyProviderConfig clears previous deepsky model selections when not switching", () => {
+  const next = updateDeepskyProviderConfig(
+    {
+      agents: {
+        defaults: {
+          models: {
+            "deepsky/old-model": {},
+            "deepsky/older-model": {},
+            "openai/gpt-4.1": {},
+          },
+          model: {
+            primary: "deepsky/old-model",
+            fallbacks: ["deepsky/older-model", "openai/gpt-4o-mini"],
+          },
+        },
+      },
+    },
+    {
+      apiKey: "sk-test",
+      models: [{ id: "qwen3.5-27b", name: "Qwen 3.5 27B" }],
+    },
+  );
+
+  assert.deepEqual(next.agents.defaults.models, {
+    "openai/gpt-4.1": {},
+    "deepsky/qwen3.5-27b": {},
+  });
+  assert.deepEqual(next.agents.defaults.model, {
+    fallbacks: ["openai/gpt-4o-mini"],
+  });
+});
+
+test("configureDeepskyOpenClaw writes JSON5-compatible config file", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-config-"));
+  const configPath = path.join(root, "openclaw.json");
+
+  fs.writeFileSync(
+    configPath,
+    `{
+      // existing comment
+      models: {
+        providers: {
+          existing: {
+            api: "openai-completions",
+            models: [{ id: "existing-model", name: "Existing Model" }],
+          },
+        },
+      },
+      agents: {
+        defaults: {
+          models: {
+            "existing/model": {},
+          },
+        },
+      },
+    }\n`,
+    "utf8",
+  );
+
+  const result = configureDeepskyOpenClaw({
+    configPath,
+    apiKey: "sk-test",
+    models: [{ id: "qwen3.5-27b", name: "Qwen 3.5 27B" }],
+    selectedModelId: "qwen3.5-27b",
+  });
+  const persisted = readOpenClawConfig(configPath);
+
+  assert.equal(result.configPath, configPath);
+  assert.equal(result.modelCount, 1);
+  assert.equal(result.selectedModelRef, createOpenClawModelRef("qwen3.5-27b"));
+  assert.equal(persisted.models.providers.deepsky.apiKey, "sk-test");
+  assert.equal(persisted.models.providers.existing.api, "openai-completions");
+  assert.equal(
+    persisted.agents.defaults.model.primary,
+    createOpenClawModelRef("qwen3.5-27b"),
+  );
 });

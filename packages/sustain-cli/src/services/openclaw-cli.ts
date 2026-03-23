@@ -5,6 +5,12 @@ import { toErrorMessage } from "../utils/errors";
 export const DEFAULT_OPENCLAW_TICK_EVERY = "5m";
 export const DEFAULT_OPENCLAW_RETRY_EVERY = "10m";
 export const DEFAULT_OPENCLAW_SESSION = "isolated";
+export const SUSTAIN_TICK_JOB_NAME = "deepsky-sustain-tick";
+export const SUSTAIN_RETRY_JOB_NAME = "deepsky-sustain-retry-orders";
+const LEGACY_SUSTAIN_JOB_NAMES = new Set([
+  "market-sustain-tick",
+  "market-sustain-retry-orders",
+]);
 
 export type OpenClawCommandResult = {
   stdout: string;
@@ -80,7 +86,10 @@ export function createOpenClawCli(executor: OpenClawExecutor = runOpenClawComman
     ): Promise<RegisterSustainOpenClawJobsResult> {
       const jobs = buildSustainOpenClawJobs(options);
       const existing = await this.listCronJobs();
-      const targetNames = new Set(jobs.map((job) => job.name));
+      const targetNames = new Set([
+        ...jobs.map((job) => job.name),
+        ...LEGACY_SUSTAIN_JOB_NAMES,
+      ]);
       const removed: OpenClawCronJob[] = [];
 
       for (const job of existing) {
@@ -160,32 +169,32 @@ export function buildSustainOpenClawJobs(
 
   return [
     {
-      name: "market-sustain-tick",
+      name: SUSTAIN_TICK_JOB_NAME,
       every: tickEvery,
       session,
       message: [
         "You are an autonomous agent. Run a sustain review now.",
-        "1. Run `superise market-sustain health-check --json` and `superise market-sustain forecast --json`.",
+        "1. Run `deepsky sustain health-check --json` and `deepsky sustain forecast --json`.",
         "2. If balance is healthy, do nothing.",
-        "3. If balance is low, run `superise market-sustain list-models --json` if pricing context would help you decide next steps.",
-        "4. If balance is critical or runway is too short, choose a top-up amount yourself and run `superise market-sustain top-up <amount>`.",
+        "3. If balance is low, run `deepsky sustain list-models --json` if pricing context would help you decide next steps.",
+        "4. If balance is critical or runway is too short, choose a top-up amount yourself and run `deepsky sustain top-up <amount>`.",
         "5. If the wallet rejects the transfer amount or policy, report the exact wallet-side error.",
-        "6. If a recharge may have partially failed, run `superise market-sustain retry-orders --json`.",
+        "6. If a recharge may have partially failed, run `deepsky sustain retry-orders --json`.",
         "7. Briefly announce important actions. Stay quiet if nothing needs doing.",
       ].join(" "),
-      description: "Market sustain keep-alive: observe, decide, act, and report",
+      description: "Deepsky sustain keep-alive: observe, decide, act, and report",
       announce,
     },
     {
-      name: "market-sustain-retry-orders",
+      name: SUSTAIN_RETRY_JOB_NAME,
       every: retryEvery,
       session,
       message: [
-        "Run `superise market-sustain retry-orders --json` to check for pending top-up orders that need retry.",
+        "Run `deepsky sustain retry-orders --json` to check for pending top-up orders that need retry.",
         "If there are no pending orders, do not bother the user.",
         "If any orders were escalated to manual review, report full details to the user.",
       ].join(" "),
-      description: "Retry pending market sustain top-up orders and escalate true failures",
+      description: "Retry pending Deepsky sustain top-up orders and escalate true failures",
       announce,
     },
   ];
