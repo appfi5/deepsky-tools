@@ -37,11 +37,11 @@ After the skill is installed, a prompt like this should be enough:
 The CLI is intended to be distributed as an npm package:
 
 ```bash
-npm install -g @deepsky/cli
+npm install -g @superise/deepsky-cli
 deepsky sustain --help
 ```
 
-The skill should treat that install as a preflight dependency. If `deepsky sustain` is not available, the agent should install `@deepsky/cli` globally and verify the command before continuing.
+The skill should treat that install as a preflight dependency. If `deepsky sustain` is not available, the agent should install `@superise/deepsky-cli` globally and verify the command before continuing.
 
 ### 3. Configure OpenClaw Through The CLI
 

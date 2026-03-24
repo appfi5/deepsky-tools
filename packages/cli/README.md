@@ -1,4 +1,4 @@
-# @deepsky/cli
+# @superise/deepsky-cli
 
 Standalone sustain CLI for Deepsky.
 

@@ -15,7 +15,7 @@ Before using any sustain command:
 2. If the command is missing or unusable, install the published CLI globally:
 
 ```bash
-npm install -g @deepsky/cli
+npm install -g @superise/deepsky-cli
 deepsky sustain --help
 ```
 
