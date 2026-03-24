@@ -1,0 +1,42 @@
+{
+  "name": "@deepsky/cli",
+  "version": "0.0.1",
+  "packageManager": "bun@1.3.9",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:appfi5/deepsky-tools.git"
+  },
+  "type": "module",
+  "main": "./dist/lib.cjs",
+  "module": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "bin": {
+    "deepsky": "bin/deepsky.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "import": "./dist/lib.js",
+      "require": "./dist/lib.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "rm -rf bin && bun build --target node --outfile bin/deepsky.js src/cli.ts && bunx tsup src/lib.ts --format esm,cjs --dts --clean",
+    "build:bin": "bun build --compile --outfile bin/deepsky src/cli.ts",
+    "start": "node bin/deepsky.js",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "commander": "^14.0.3",
+    "json5": "^2.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}
