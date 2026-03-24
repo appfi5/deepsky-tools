@@ -106,7 +106,7 @@ The default local state directory is `~/.deepsky`. You can override storage with
 For local development:
 
 ```bash
-cd packages/sustain-cli
+cd packages/cli
 bun install
 bun run build
 bun run test

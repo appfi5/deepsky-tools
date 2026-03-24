@@ -29,7 +29,7 @@ const {
 } = require("../dist/lib.cjs");
 
 function createTempPaths() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sustain-cli-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "deepsky-cli-"));
   return createDefaultPaths(root);
 }
 
