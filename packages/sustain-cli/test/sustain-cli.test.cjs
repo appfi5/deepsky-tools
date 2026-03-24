@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { Command } = require("commander");
 
 const {
   SustainConfigStore,
@@ -23,6 +24,7 @@ const {
   installSkillFromRepository,
   installSkillsFromRepositories,
   readOpenClawConfig,
+  registerSetupCommands,
   updateDeepskyProviderConfig,
 } = require("../dist/lib.cjs");
 
@@ -1450,6 +1452,31 @@ test("installSkillsFromRepositories installs both default skill repositories", a
     "npx --yes skills add https://github.com/appfi5/deepsky-tools.git --global --copy --yes",
     "npx --yes skills add https://github.com/appfi5/superise-for-agent --global --copy --yes",
   ]);
+});
+
+test("registerSetupCommands exposes a defaults flag for one-shot setup", () => {
+  const program = new Command();
+  registerSetupCommands(program);
+
+  const command = program.commands.find((item) => item.name() === "openclaw");
+  assert.ok(command);
+
+  const defaultsOption = command.options.find((option) => option.long === "--defaults");
+  assert.ok(defaultsOption);
+  assert.match(defaultsOption.description, /default values/i);
+  assert.match(defaultsOption.description, /primary model/i);
+});
+
+test("registerSetupCommands describes wallet setup as a prerequisite", () => {
+  const program = new Command();
+  registerSetupCommands(program);
+
+  const command = program.commands.find((item) => item.name() === "openclaw");
+  assert.ok(command);
+
+  const walletOption = command.options.find((option) => option.long === "--skip-wallet-install");
+  assert.ok(walletOption);
+  assert.match(walletOption.description, /prerequisite/i);
 });
 
 test("installSkillFromRepository can still target a single named skill", async () => {

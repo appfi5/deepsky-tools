@@ -43,7 +43,41 @@ deepsky sustain --help
 
 The skill should treat that install as a preflight dependency. If `deepsky sustain` is not available, the agent should install `@deepsky/cli` globally and verify the command before continuing.
 
-### 3. Common Commands
+### 3. Configure OpenClaw Through The CLI
+
+The top-level CLI setup is the main bootstrap path when you want OpenClaw to actually use Deepsky models.
+
+Recommended one-shot setup:
+
+```bash
+deepsky setup openclaw --defaults
+```
+
+That flow:
+
+- prepares the wallet prerequisite first
+- creates or reuses the Deepsky provider credentials
+- writes the Deepsky provider into `~/.openclaw/openclaw.json`
+- installs repository skills from both `https://github.com/appfi5/deepsky-tools.git` and `https://github.com/appfi5/superise-for-agent`
+- leaves the current OpenClaw primary model unchanged and reminds you to switch it to Deepsky manually
+
+If you prefer to drive the provider setup yourself, run:
+
+```bash
+deepsky setup openclaw
+```
+
+### 4. Set Up Recurring Sustain Checks
+
+Once the OpenClaw provider is ready, install the recurring sustain jobs:
+
+```bash
+deepsky sustain setup openclaw
+```
+
+This step is separate from provider setup. It registers the recurring sustain health-check job, with an adaptive cadence that stretches to `2h` when healthy, tightens to `1h` when low, and runs every `20m` when critical. Retry jobs for abnormal top-up orders are created on demand and automatically cleaned up after pending orders are resolved or escalated for manual review.
+
+### 5. Common Commands
 
 ```bash
 deepsky sustain health-check --json
@@ -55,9 +89,7 @@ deepsky sustain setup openclaw
 deepsky clean openclaw
 ```
 
-`deepsky setup openclaw` configures OpenClaw to use Deepsky as a custom provider first. If you already have a Deepsky API key, pass `--api-key <key>` or set `DEEPSKY_OPENCLAW_API_KEY`; otherwise setup creates one through wallet login. The wallet step now always runs unless you pass `--skip-wallet-install`: with the default local wallet MCP endpoint `http://127.0.0.1:18799/mcp`, setup checks the SupeRISE Agent Wallet state and in interactive mode asks whether to install it when missing, asks whether to start it when the Docker container exists but is stopped, and reports that it is already installed when it is already running. When setup performs a fresh install, it also surfaces the one-time initial Owner password so you can rotate it immediately after the first login. After provider setup it writes `models.providers.deepsky` into `~/.openclaw/openclaw.json`, can optionally switch the active OpenClaw primary model, and runs `Install skills`, which silently installs all skills from both `https://github.com/appfi5/deepsky-tools.git` and `https://github.com/appfi5/superise-for-agent` in global copy mode. Use `--skip-wallet-install` to skip the wallet setup step, `--skip-skill-install` to disable `Install skills`, or `--skill-repo <url>` to add one more repository to that install step.
-
-`deepsky sustain setup openclaw` is separate. It registers the recurring sustain health-check job, with an adaptive cadence that stretches to `2h` when healthy, tightens to `1h` when low, and runs every `20m` when critical. Retry jobs for abnormal top-up orders are created on demand and automatically cleaned up after pending orders are resolved or escalated for manual review.
+`deepsky setup openclaw` configures OpenClaw to use Deepsky as a custom provider first. Before it touches the provider config, it now treats the wallet as a prerequisite unless you pass `--skip-wallet-install`: with the default local wallet MCP endpoint `http://127.0.0.1:18799/mcp`, setup automatically installs the SupeRISE Agent Wallet when it is missing, automatically starts the existing Docker container when it is stopped, and reports that it is already installed when it is already running. When setup performs a fresh install, it also surfaces the one-time initial Owner password so you can rotate it immediately after the first login. If you already have a Deepsky API key, pass `--api-key <key>` or set `DEEPSKY_OPENCLAW_API_KEY`; otherwise setup creates one through wallet login after the wallet prerequisite succeeds. For non-default wallet MCP URLs, setup checks that the configured wallet health endpoint is reachable and fails early when it is not. After provider setup it writes `models.providers.deepsky` into `~/.openclaw/openclaw.json`, can optionally switch the active OpenClaw primary model, and runs `Install skills`, which silently installs all skills from both `https://github.com/appfi5/deepsky-tools.git` and `https://github.com/appfi5/superise-for-agent` in global copy mode. Use `--defaults` to run setup non-interactively with default values, keep the current primary model unchanged, and print a reminder that you still need to switch the OpenClaw primary model to Deepsky manually; use `--skip-wallet-install` to skip the wallet prerequisite step, `--skip-skill-install` to disable `Install skills`, or `--skill-repo <url>` to add one more repository to that install step.
 
 `deepsky clean openclaw` removes the Deepsky custom provider from `~/.openclaw/openclaw.json` and clears Deepsky sustain cron jobs. Use `--provider-only` or `--jobs-only` when you want a narrower cleanup.
 

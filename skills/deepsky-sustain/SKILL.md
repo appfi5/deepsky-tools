@@ -28,6 +28,7 @@ Do not assume a local workspace checkout is already wired into `PATH`. The suppo
 - Use only the sustain commands this package actually implements.
 - Do not assume legacy commands such as `set-model` or `mcp-server` exist.
 - The only sustain setup flow restored here is `deepsky sustain setup openclaw`.
+- OpenClaw provider bootstrap is separate: use `deepsky setup openclaw` when OpenClaw still needs the Deepsky provider, wallet prerequisite handling, or repository skill installation.
 - Prefer explicit sustain commands over ad hoc wallet transfers for recharge.
 - Report wallet-side auth dependencies clearly instead of inventing local workarounds.
 
@@ -82,6 +83,8 @@ Map intent to commands like this:
 - "Top up 3000 CKB" -> `deepsky sustain top-up 3000`
 - "Dry-run a recharge" -> `deepsky sustain top-up <amount> --dry-run --json`
 - "Retry failed top-up orders" -> `deepsky sustain retry-orders --json`
+- "Configure OpenClaw for Deepsky" -> `deepsky setup openclaw`
+- "Bootstrap OpenClaw provider" -> `deepsky setup openclaw`
 - "Set up recurring sustain checks" -> `deepsky sustain setup openclaw`
 - "Install sustain cron jobs" -> `deepsky sustain setup openclaw`
 - "Clean OpenClaw setup" -> `deepsky clean openclaw`
@@ -108,6 +111,9 @@ Use `--json` whenever the result will drive a follow-up decision.
 Use these commands to change state:
 
 ```bash
+deepsky setup openclaw
+deepsky setup openclaw --defaults
+deepsky setup openclaw --api-key <key>
 deepsky sustain top-up <amount>
 deepsky sustain top-up <amount> --json
 deepsky sustain retry-orders --json
@@ -125,6 +131,11 @@ deepsky sustain logout
 
 Follow these rules:
 
+- Use `deepsky setup openclaw` when the user needs the Deepsky OpenClaw provider configured before sustain automation can work.
+- That top-level setup now treats the wallet as a prerequisite: with the default local wallet MCP URL it auto-installs or auto-starts the SupeRISE Agent Wallet before configuring OpenClaw.
+- For non-default wallet MCP URLs, `deepsky setup openclaw` expects the configured wallet health endpoint to already be reachable and fails early when it is not.
+- `deepsky setup openclaw --defaults` runs non-interactively with defaults, keeps the current primary model unchanged, and reminds the user to switch the OpenClaw primary model to Deepsky manually.
+- Top-level setup also runs `Install skills`, which silently installs all skills from both `https://github.com/appfi5/deepsky-tools.git` and `https://github.com/appfi5/superise-for-agent` in global copy mode.
 - Choose a top-up amount based on the user's intent and current balance posture.
 - Let wallet-side policy enforce transfer limits. If the wallet rejects the amount, report the wallet error directly.
 - Use `top-up` for recharge because it creates the order, transfers CKB, and submits the tx hash as one flow.
@@ -141,11 +152,12 @@ When the user delegates self-supervision:
 2. Run `deepsky sustain health-check --json`.
 3. Run `deepsky sustain forecast --json`.
 4. If balance is low, run `deepsky sustain list-models --json`.
-5. If recurring supervision is expected, run `deepsky sustain setup openclaw`.
-6. If balance is critical or runway is too short, choose an amount and run `deepsky sustain top-up <amount>`.
-7. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
-8. If a recharge looked partial, run `deepsky sustain retry-orders --json`.
-9. Report the decision and the reason.
+5. If OpenClaw is not yet configured for Deepsky, run `deepsky setup openclaw` first.
+6. If recurring supervision is expected, run `deepsky sustain setup openclaw`.
+7. If balance is critical or runway is too short, choose an amount and run `deepsky sustain top-up <amount>`.
+8. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
+9. If a recharge looked partial, run `deepsky sustain retry-orders --json`.
+10. Report the decision and the reason.
 
 ## Threshold Strategy
 
@@ -208,7 +220,9 @@ Guidelines:
 When the user asks for recurring monitoring, automatic keepalive, or a timed sustain loop:
 
 - Prefer `deepsky sustain setup openclaw` for one-click recurring sustain setup when OpenClaw is available.
-- The default setup installs the keepalive review loop. The retry-orders loop is scheduled only when a top-up enters pending-retry state, and is removed once pending orders are cleared or escalated to manual review.
+- Before sustain scheduling, use `deepsky setup openclaw` if the Deepsky OpenClaw provider has not been configured yet.
+- The default sustain setup installs the keepalive review loop. It starts at `20m`, then retunes to `2h` when healthy, `1h` when low, and `20m` when critical.
+- The retry-orders loop is scheduled only when a top-up enters pending-retry state, and is removed once pending orders are cleared or escalated to manual review.
 - Use `--tick-every` for a different initial health-check cadence, and `--retry-every` or `--session` if the user asks for a different retry cadence or OpenClaw target when retry scheduling is needed.
 - Keep the scheduled loop focused on observe -> decide -> act, not on ad hoc wallet transfers.
 - Only rely on automatic `top-up` inside the scheduled loop when the user explicitly delegated autonomous recharge.

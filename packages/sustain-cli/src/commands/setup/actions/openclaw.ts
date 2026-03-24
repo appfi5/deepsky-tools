@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import {
   cancel as cancelPrompt,
-  confirm as confirmPrompt,
   intro,
   isCancel,
+  confirm as confirmPrompt,
   outro,
   select,
   spinner as createSpinner,
@@ -20,7 +20,6 @@ import {
   installSkillsFromRepositories,
 } from "../../../services/skill-installer";
 import {
-  canAutoInstallSuperiseAgentWallet,
   ensureSuperiseAgentWallet,
   inspectSuperiseAgentWallet,
 } from "../../../services/wallet-installer";
@@ -53,32 +52,63 @@ type WalletSetupResult =
 export async function setupOpenClawAction(
   options: {
     apiKey?: string;
+    defaults?: boolean;
     json?: boolean;
     skipSkillInstall?: boolean;
     skipWalletInstall?: boolean;
     skillRepo?: string;
   } = {},
 ): Promise<void> {
-  const interactive = !options.json && Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive =
+    !options.defaults && !options.json && Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const progress = createSetupProgressLogger(options.defaults === true && !options.json);
 
   try {
     if (interactive) {
       intro("Configure OpenClaw for Deepsky");
     }
 
+    progress("Starting OpenClaw setup with default values...");
+
     const context = createDefaultSustainContext();
     const config = context.configStore.load();
-    let walletInstall = createSkippedWalletResult(config.walletMcpUrl, "Skipped.");
-    let walletSetupChecked = false;
+    let walletInstall = options.skipWalletInstall
+      ? createSkippedWalletResult(config.walletMcpUrl, "Skipped by --skip-wallet-install.")
+      : await ensureWalletPrerequisite({
+          interactive,
+          walletMcpUrl: config.walletMcpUrl,
+          requestTimeoutMs: config.requestTimeoutMs,
+          options,
+        });
 
+    if (walletInstall.success === false) {
+      const walletError = `Wallet setup failed before OpenClaw configuration. ${walletInstall.error}`;
+      if (options.json) {
+        printJson({
+          success: false,
+          error: walletError,
+          walletInstall,
+        });
+        process.exitCode = 1;
+        return;
+      }
+
+      throw new Error(walletError);
+    }
+
+    if (!options.json) {
+      printWalletSetupStatus(walletInstall);
+    }
+
+    const providedApiKey =
+      options.apiKey?.trim() || process.env.DEEPSKY_OPENCLAW_API_KEY?.trim() || "";
+
+    progress("Fetching available Deepsky models...");
     const models = await context.marketClient.fetchModels();
 
     if (models.length === 0) {
       throw new Error("No Deepsky models were returned by the platform.");
     }
-
-    const providedApiKey =
-      options.apiKey?.trim() || process.env.DEEPSKY_OPENCLAW_API_KEY?.trim() || "";
 
     let apiKeyId: string | null = null;
     let apiKeyValue = providedApiKey;
@@ -88,6 +118,7 @@ export async function setupOpenClawAction(
     let outputPriceRange: { low: number; high: number } | null = null;
 
     if (!apiKeyValue) {
+      progress("Using default API key alias and price ranges.");
       const defaultAlias = createDefaultApiKeyAlias();
       alias = interactive
         ? await promptTextValue("API key alias", defaultAlias)
@@ -108,45 +139,10 @@ export async function setupOpenClawAction(
           )
         : parsePriceRange(`${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`);
 
-      try {
-        await context.authService.ensureToken();
-      } catch (error) {
-        const shouldTryWalletInstall =
-          !options.skipWalletInstall &&
-          canAutoInstallSuperiseAgentWallet(config.walletMcpUrl) &&
-          isWalletBootstrapCandidate(error);
+      progress("Checking existing Deepsky market login...");
+      await context.authService.ensureToken();
 
-        if (!shouldTryWalletInstall) {
-          throw error;
-        }
-
-        walletInstall = await ensureWalletSetupForOpenClaw({
-          interactive,
-          walletMcpUrl: config.walletMcpUrl,
-          requestTimeoutMs: config.requestTimeoutMs,
-        });
-        walletSetupChecked = true;
-
-        if (walletInstall.success === false || walletInstall.success === null) {
-          const walletError = walletInstall.success === false
-            ? walletInstall.error
-            : `Wallet setup was declined or skipped, but a wallet is required to create a Deepsky API key. ${walletInstall.message}`;
-          if (options.json) {
-            printJson({
-              success: false,
-              error: walletError,
-              walletInstall,
-            });
-            process.exitCode = 1;
-            return;
-          }
-
-          throw new Error(walletError);
-        }
-
-        await context.authService.ensureToken();
-      }
-
+      progress("Creating a Deepsky model API key...");
       apiKeyId = await context.marketClient.createModelApiKey(alias);
       await context.marketClient.setModelApiKeyPriceRange({
         id: apiKeyId,
@@ -157,6 +153,8 @@ export async function setupOpenClawAction(
       });
       const apiKey = await context.marketClient.getModelApiKey(apiKeyId);
       apiKeyValue = apiKey.apiKey;
+    } else {
+      progress("Using the provided Deepsky API key.");
     }
 
     const shouldSwitchModel = interactive
@@ -173,6 +171,7 @@ export async function setupOpenClawAction(
         : models[0]?.shortName;
     }
 
+    progress("Writing the OpenClaw Deepsky provider configuration...");
     const configResult = configureDeepskyOpenClaw({
       apiKey: apiKeyValue,
       models: models.map((model) => ({
@@ -181,17 +180,9 @@ export async function setupOpenClawAction(
       })),
       selectedModelId,
     });
-
-    if (!walletSetupChecked) {
-      walletInstall = options.skipWalletInstall
-        ? createSkippedWalletResult(config.walletMcpUrl, "Skipped by --skip-wallet-install.")
-        : await ensureWalletSetupForOpenClaw({
-            interactive,
-            walletMcpUrl: config.walletMcpUrl,
-            requestTimeoutMs: config.requestTimeoutMs,
-          });
-      walletSetupChecked = true;
-    }
+    const manualModelSwitchMessage = options.defaults
+      ? "Primary model was left unchanged. Switch the OpenClaw primary model to a Deepsky model manually."
+      : null;
 
     let skillInstall:
       | {
@@ -225,6 +216,7 @@ export async function setupOpenClawAction(
     } else {
       const skillRepositoryUrls = normalizeSkillRepositoryUrls(options.skillRepo);
       try {
+        progress(`${DEFAULT_SETUP_SKILL_INSTALL_LABEL}...`);
         skillInstallSpinner?.start(DEFAULT_SETUP_SKILL_INSTALL_LABEL);
         const installedSkill = await installSkillsFromRepositories({
           repositoryUrls: skillRepositoryUrls,
@@ -258,6 +250,8 @@ export async function setupOpenClawAction(
       configPath: configResult.configPath,
       switchedModel: configResult.selectedModelRef ?? null,
       selectedModelId: selectedModelId ?? null,
+      manualModelSwitchRequired: manualModelSwitchMessage !== null,
+      manualModelSwitchMessage,
       walletInstall,
       inputPriceRange: inputPriceRange
         ? {
@@ -293,6 +287,9 @@ export async function setupOpenClawAction(
     } else {
       console.log("Primary Model: unchanged");
     }
+    if (manualModelSwitchMessage) {
+      console.log(`Manual Model Switch: ${manualModelSwitchMessage}`);
+    }
     console.log(`API Key Source: ${apiKeySource}`);
     if (alias) {
       console.log(`API Key Alias: ${alias}`);
@@ -305,25 +302,6 @@ export async function setupOpenClawAction(
     }
     if (outputPriceRange) {
       console.log(`Output Price Range: ${outputPriceRange.low}-${outputPriceRange.high}`);
-    }
-    if (walletInstall.success === true) {
-      console.log(`Wallet Ready: ${walletInstall.message}`);
-      if (walletInstall.action === "installed") {
-        if (walletInstall.initialOwnerPassword) {
-          console.log(`Wallet Initial Password: ${walletInstall.initialOwnerPassword}`);
-          console.log(
-            "Wallet Password Rotation: change the initial Owner password immediately after the first login.",
-          );
-        } else {
-          console.log(
-            "Wallet Initial Password: unavailable; check the wallet startup logs or owner notice file if this was a reused runtime volume.",
-          );
-        }
-      }
-    } else if (walletInstall.success === false) {
-      console.error(`Wallet Ready failed: ${walletInstall.error}`);
-    } else if (walletInstall.success === null) {
-      console.log(`Wallet Ready: ${walletInstall.message}`);
     }
     if (skillInstall.success === true) {
       console.log(
@@ -360,17 +338,63 @@ function createDefaultApiKeyAlias(): string {
   return `openclaw-${suffix}`;
 }
 
-function isWalletBootstrapCandidate(error: unknown): boolean {
-  const message = toErrorMessage(error);
-  return message.includes("Unable to connect to wallet MCP at");
-}
-
 function createSkippedWalletResult(walletMcpUrl: string, message: string): WalletSetupResult {
   return {
     success: null,
     skipped: true,
     message,
     walletMcpUrl,
+  };
+}
+
+function printWalletSetupStatus(walletInstall: Exclude<WalletSetupResult, { success: false }>): void {
+  if (walletInstall.success === true) {
+    console.log(`Wallet Ready: ${walletInstall.message}`);
+    if (walletInstall.action === "installed") {
+      if (walletInstall.initialOwnerPassword) {
+        console.log(`Wallet Initial Password: ${walletInstall.initialOwnerPassword}`);
+        console.log(
+          "Wallet Password Rotation: change the initial Owner password immediately after the first login.",
+        );
+      } else {
+        console.log(
+          "Wallet Initial Password: unavailable; check the wallet startup logs or owner notice file if this was a reused runtime volume.",
+        );
+      }
+    }
+    return;
+  }
+
+  console.log(`Wallet Ready: ${walletInstall.message}`);
+}
+
+async function ensureWalletPrerequisite(input: {
+  interactive: boolean;
+  walletMcpUrl: string;
+  requestTimeoutMs: number;
+  options: {
+    defaults?: boolean;
+    json?: boolean;
+  };
+}): Promise<WalletSetupResult> {
+  if (input.options.defaults && !input.options.json) {
+    console.log("[setup] Preparing SupeRISE Agent Wallet...");
+  }
+
+  return ensureWalletSetupForOpenClaw({
+    interactive: input.interactive,
+    walletMcpUrl: input.walletMcpUrl,
+    requestTimeoutMs: input.requestTimeoutMs,
+  });
+}
+
+function createSetupProgressLogger(enabled: boolean): (message: string) => void {
+  if (!enabled) {
+    return () => undefined;
+  }
+
+  return (message: string) => {
+    console.log(`[setup] ${message}`);
   };
 }
 
@@ -386,7 +410,27 @@ async function ensureWalletSetupForOpenClaw(input: {
     });
 
     if (inspection.status === "unsupported") {
-      return createSkippedWalletResult(inspection.walletMcpUrl, inspection.message);
+      const healthCheck = await checkWalletHealthForSetup({
+        walletMcpUrl: inspection.walletMcpUrl,
+        requestTimeoutMs: input.requestTimeoutMs,
+      });
+
+      if (healthCheck.healthy) {
+        return {
+          success: true,
+          action: "already-running",
+          message:
+            "Configured wallet MCP endpoint is reachable. Automatic wallet install/start was skipped because the URL is not the default local SupeRISE Agent Wallet endpoint.",
+          walletMcpUrl: inspection.walletMcpUrl,
+          initialOwnerPassword: null,
+        };
+      }
+
+      return {
+        success: false,
+        error: healthCheck.message,
+        walletMcpUrl: inspection.walletMcpUrl,
+      };
     }
 
     if (inspection.status === "running") {
@@ -407,22 +451,9 @@ async function ensureWalletSetupForOpenClaw(input: {
       };
     }
 
-    const confirmationMessage = inspection.status === "not-installed"
-      ? "Install SupeRISE Agent Wallet with Docker now"
-      : "Start the installed SupeRISE Agent Wallet container now";
     const spinnerMessage = inspection.status === "not-installed"
       ? "Installing SupeRISE Agent Wallet..."
       : "Starting SupeRISE Agent Wallet...";
-    const declinedMessage = inspection.status === "not-installed"
-      ? "User declined SupeRISE Agent Wallet installation."
-      : "User declined starting the existing SupeRISE Agent Wallet container.";
-
-    const approved = input.interactive
-      ? await promptConfirmValue(confirmationMessage, true)
-      : true;
-    if (!approved) {
-      return createSkippedWalletResult(inspection.walletMcpUrl, declinedMessage);
-    }
 
     const walletSpinner = input.interactive ? createSpinner() : null;
     try {
@@ -456,6 +487,74 @@ async function ensureWalletSetupForOpenClaw(input: {
       error: toErrorMessage(error),
       walletMcpUrl: input.walletMcpUrl,
     };
+  }
+}
+
+async function checkWalletHealthForSetup(input: {
+  walletMcpUrl: string;
+  requestTimeoutMs: number;
+}): Promise<{
+  healthy: boolean;
+  healthUrl: string | null;
+  message: string;
+}> {
+  const healthUrl = getWalletHealthUrl(input.walletMcpUrl);
+  if (!healthUrl) {
+    return {
+      healthy: false,
+      healthUrl: null,
+      message:
+        `Configured wallet MCP URL \`${input.walletMcpUrl}\` is invalid, and automatic wallet setup is only supported for the default local SupeRISE Agent Wallet endpoint.`,
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), input.requestTimeoutMs);
+
+  try {
+    const response = await fetch(healthUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    if (response.ok) {
+      return {
+        healthy: true,
+        healthUrl,
+        message: `Wallet health check succeeded at ${healthUrl}.`,
+      };
+    }
+
+    return {
+      healthy: false,
+      healthUrl,
+      message:
+        `Configured wallet MCP URL is not the default local SupeRISE Agent Wallet endpoint, and the wallet health check at ${healthUrl} returned HTTP ${response.status}. Start the wallet manually or update DEEPSKY_WALLET_MCP_URL before rerunning setup.`,
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      healthUrl,
+      message:
+        `Configured wallet MCP URL is not the default local SupeRISE Agent Wallet endpoint, and the wallet health check at ${healthUrl} failed. Start the wallet manually or update DEEPSKY_WALLET_MCP_URL before rerunning setup. Root cause: ${toErrorMessage(error)}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getWalletHealthUrl(walletMcpUrl: string): string | null {
+  try {
+    const url = new URL(walletMcpUrl);
+    url.pathname = "/health";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
   }
 }
 
