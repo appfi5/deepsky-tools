@@ -1,4 +1,4 @@
-# @deepsky/sustain-cli
+# @deepsky/cli
 
 Standalone sustain CLI for Deepsky.
 
@@ -27,6 +27,7 @@ deepsky sustain top-up <amount>
 deepsky sustain retry-orders
 deepsky setup openclaw
 deepsky sustain setup openclaw
+deepsky clean openclaw
 deepsky sustain config show|get|set|unset|reset
 deepsky sustain logout
 ```
@@ -40,9 +41,11 @@ Recommended sustain loop:
 5. If a top-up partially failed after transfer submission, run `deepsky sustain retry-orders --json`.
 6. If you want recurring self-supervision, run `deepsky sustain setup openclaw`.
 
-`deepsky sustain setup openclaw` registers two OpenClaw cron jobs by default: a keepalive review loop every `5m`, and a pending-order retry loop every `10m`. The default OpenClaw target is `isolated` so the jobs can announce results back to chat. Use `--tick-every`, `--retry-every`, or `--session` to customize the schedule target.
+`deepsky sustain setup openclaw` registers a keepalive review loop that starts at `20m` and then retunes itself to `2h` when healthy, `1h` when low, and `20m` when critical. Pending-order retry is now on-demand: the retry job is created only after a top-up lands in pending-retry state, and it is removed again after pending orders are cleared or escalated to manual review. The default OpenClaw target is `isolated` so the jobs can announce results back to chat. Use `--tick-every` to change the initial health-check cadence, and `--retry-every` or `--session` to customize the retry job when it is needed.
 
-`deepsky setup openclaw` is separate from sustain setup. It reuses the existing wallet login flow to create a Deepsky model API key, imports available models into `models.providers.deepsky`, and can optionally switch the OpenClaw primary model.
+`deepsky setup openclaw` is separate from sustain setup. It first configures the Deepsky provider side of OpenClaw. If you pass `--api-key <key>` or set `DEEPSKY_OPENCLAW_API_KEY`, it uses that key directly; otherwise it falls back to wallet login to create one. The wallet step always runs unless you pass `--skip-wallet-install`: with the default local SupeRISE Agent Wallet endpoint `http://127.0.0.1:18799/mcp`, setup checks the Docker-backed wallet state, prompts to install it when it is missing, prompts to start it when the container exists but is stopped, and reports that it is already installed when it is already running. When setup performs a fresh install, it also reports the one-time initial Owner password so you can rotate it immediately after the first login. After provider setup it can optionally switch the OpenClaw primary model, and then runs `Install skills`, which silently installs all skills from both `https://github.com/appfi5/deepsky-tools.git` and `https://github.com/appfi5/superise-for-agent` in global copy mode. Use `--skip-wallet-install` to skip the wallet setup step, `--skip-skill-install` to disable `Install skills`, or `--skill-repo <url>` to add one more repository URL to that install step.
+
+`deepsky clean openclaw` removes the Deepsky OpenClaw provider settings and all Deepsky sustain cron jobs. Use `--provider-only` or `--jobs-only` if you only want part of that cleanup.
 
 If OpenClaw is not available or you explicitly prefer app-managed scheduling, you can still use app-level automations to run the same observe -> decide -> act loop on a schedule.
 
@@ -64,15 +67,13 @@ Top-up amount policy is now enforced by the wallet side. The sustain CLI only va
 
 Current local state:
 
-- `~/.superise/sustain/config.json`
-- `~/.superise/market-session.json`
-- `~/.superise/sustain/observations.json`
-- `~/.superise/sustain/pending-orders.json`
-- `~/.superise/sustain/manual-review-orders.json`
+- `~/.deepsky/sustain/config.json`
+- `~/.deepsky/market-session.json`
+- `~/.deepsky/sustain/observations.json`
+- `~/.deepsky/sustain/pending-orders.json`
+- `~/.deepsky/sustain/manual-review-orders.json`
 
-Default storage can also be overridden with `SUPERISE_SUSTAIN_HOME` or `SUPERISE_HOME`.
-
-These storage and environment variable names are intentionally kept for compatibility during the rename refactor.
+Default storage can also be overridden with `DEEPSKY_SUSTAIN_HOME` or `DEEPSKY_HOME`.
 
 ## Config
 

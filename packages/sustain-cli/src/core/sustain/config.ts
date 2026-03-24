@@ -85,14 +85,14 @@ export class SustainConfigStore {
   private loadEnvOverrides(): Partial<SustainCliConfig> {
     const overrides: Partial<SustainCliConfig> = {};
 
-    if (this.env.SUPERISE_MARKET_BASE_URL) {
-      overrides.platformBaseUrl = this.env.SUPERISE_MARKET_BASE_URL;
+    if (this.env.DEEPSKY_MARKET_BASE_URL) {
+      overrides.platformBaseUrl = this.env.DEEPSKY_MARKET_BASE_URL;
     }
-    if (this.env.SUPERISE_WALLET_MCP_URL) {
-      overrides.walletMcpUrl = this.env.SUPERISE_WALLET_MCP_URL;
+    if (this.env.DEEPSKY_WALLET_MCP_URL) {
+      overrides.walletMcpUrl = this.env.DEEPSKY_WALLET_MCP_URL;
     }
-    if (this.env.SUPERISE_MARKET_PUBLIC_KEY) {
-      overrides.marketPublicKey = this.env.SUPERISE_MARKET_PUBLIC_KEY;
+    if (this.env.DEEPSKY_MARKET_PUBLIC_KEY) {
+      overrides.marketPublicKey = this.env.DEEPSKY_MARKET_PUBLIC_KEY;
     }
     if (this.env.SUSTAIN_CRITICAL_BALANCE) {
       overrides.criticalBalance = parseNonNegativeNumber(

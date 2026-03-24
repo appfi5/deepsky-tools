@@ -6,6 +6,7 @@ import {
   isCancel,
   outro,
   select,
+  spinner as createSpinner,
   text,
 } from "@clack/prompts";
 import { createDefaultSustainContext } from "../../../core/sustain/engine";
@@ -13,14 +14,50 @@ import {
   configureDeepskyOpenClaw,
   createOpenClawModelRef,
 } from "../../../services/openclaw-config";
+import {
+  DEFAULT_SETUP_SKILL_INSTALL_LABEL,
+  DEFAULT_SETUP_SKILL_REPOSITORY_URLS,
+  installSkillsFromRepositories,
+} from "../../../services/skill-installer";
+import {
+  canAutoInstallSuperiseAgentWallet,
+  ensureSuperiseAgentWallet,
+  inspectSuperiseAgentWallet,
+} from "../../../services/wallet-installer";
 import { printJson } from "../../sustain/helpers";
 import { toErrorMessage } from "../../../utils/errors";
 
 const DEFAULT_LOWEST_PRICE = 1;
 const DEFAULT_HIGHEST_PRICE = 20_000;
 
+type WalletSetupResult =
+  | {
+      success: true;
+      action: "already-running" | "started-existing" | "installed";
+      message: string;
+      walletMcpUrl: string;
+      initialOwnerPassword: string | null;
+    }
+  | {
+      success: false;
+      error: string;
+      walletMcpUrl: string;
+    }
+  | {
+      success: null;
+      skipped: true;
+      message: string;
+      walletMcpUrl: string;
+    };
+
 export async function setupOpenClawAction(
-  options: { json?: boolean } = {},
+  options: {
+    apiKey?: string;
+    json?: boolean;
+    skipSkillInstall?: boolean;
+    skipWalletInstall?: boolean;
+    skillRepo?: string;
+  } = {},
 ): Promise<void> {
   const interactive = !options.json && Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
@@ -30,42 +67,97 @@ export async function setupOpenClawAction(
     }
 
     const context = createDefaultSustainContext();
-    await context.authService.ensureToken();
+    const config = context.configStore.load();
+    let walletInstall = createSkippedWalletResult(config.walletMcpUrl, "Skipped.");
+    let walletSetupChecked = false;
+
     const models = await context.marketClient.fetchModels();
 
     if (models.length === 0) {
       throw new Error("No Deepsky models were returned by the platform.");
     }
 
-    const defaultAlias = createDefaultApiKeyAlias();
-    const alias = interactive
-      ? await promptTextValue("API key alias", defaultAlias)
-      : defaultAlias;
+    const providedApiKey =
+      options.apiKey?.trim() || process.env.DEEPSKY_OPENCLAW_API_KEY?.trim() || "";
 
-    const inputPriceRange = interactive
-      ? await promptParsedValue(
-          "Input price range (min-max)",
-          `${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`,
-          parsePriceRange,
-        )
-      : parsePriceRange(`${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`);
-    const outputPriceRange = interactive
-      ? await promptParsedValue(
-          "Output price range (min-max)",
-          `${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`,
-          parsePriceRange,
-        )
-      : parsePriceRange(`${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`);
+    let apiKeyId: string | null = null;
+    let apiKeyValue = providedApiKey;
+    let apiKeySource: "provided" | "created" = providedApiKey ? "provided" : "created";
+    let alias: string | null = null;
+    let inputPriceRange: { low: number; high: number } | null = null;
+    let outputPriceRange: { low: number; high: number } | null = null;
 
-    const apiKeyId = await context.marketClient.createModelApiKey(alias);
-    await context.marketClient.setModelApiKeyPriceRange({
-      id: apiKeyId,
-      lowestInputPrice: inputPriceRange.low,
-      highestInputPrice: inputPriceRange.high,
-      lowestOutputPrice: outputPriceRange.low,
-      highestOutputPrice: outputPriceRange.high,
-    });
-    const apiKey = await context.marketClient.getModelApiKey(apiKeyId);
+    if (!apiKeyValue) {
+      const defaultAlias = createDefaultApiKeyAlias();
+      alias = interactive
+        ? await promptTextValue("API key alias", defaultAlias)
+        : defaultAlias;
+
+      inputPriceRange = interactive
+        ? await promptParsedValue(
+            "Input price range (min-max)",
+            `${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`,
+            parsePriceRange,
+          )
+        : parsePriceRange(`${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`);
+      outputPriceRange = interactive
+        ? await promptParsedValue(
+            "Output price range (min-max)",
+            `${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`,
+            parsePriceRange,
+          )
+        : parsePriceRange(`${DEFAULT_LOWEST_PRICE}-${DEFAULT_HIGHEST_PRICE}`);
+
+      try {
+        await context.authService.ensureToken();
+      } catch (error) {
+        const shouldTryWalletInstall =
+          !options.skipWalletInstall &&
+          canAutoInstallSuperiseAgentWallet(config.walletMcpUrl) &&
+          isWalletBootstrapCandidate(error);
+
+        if (!shouldTryWalletInstall) {
+          throw error;
+        }
+
+        walletInstall = await ensureWalletSetupForOpenClaw({
+          interactive,
+          walletMcpUrl: config.walletMcpUrl,
+          requestTimeoutMs: config.requestTimeoutMs,
+        });
+        walletSetupChecked = true;
+
+        if (walletInstall.success === false || walletInstall.success === null) {
+          const walletError = walletInstall.success === false
+            ? walletInstall.error
+            : `Wallet setup was declined or skipped, but a wallet is required to create a Deepsky API key. ${walletInstall.message}`;
+          if (options.json) {
+            printJson({
+              success: false,
+              error: walletError,
+              walletInstall,
+            });
+            process.exitCode = 1;
+            return;
+          }
+
+          throw new Error(walletError);
+        }
+
+        await context.authService.ensureToken();
+      }
+
+      apiKeyId = await context.marketClient.createModelApiKey(alias);
+      await context.marketClient.setModelApiKeyPriceRange({
+        id: apiKeyId,
+        lowestInputPrice: inputPriceRange.low,
+        highestInputPrice: inputPriceRange.high,
+        lowestOutputPrice: outputPriceRange.low,
+        highestOutputPrice: outputPriceRange.high,
+      });
+      const apiKey = await context.marketClient.getModelApiKey(apiKeyId);
+      apiKeyValue = apiKey.apiKey;
+    }
 
     const shouldSwitchModel = interactive
       ? await promptConfirmValue(
@@ -82,7 +174,7 @@ export async function setupOpenClawAction(
     }
 
     const configResult = configureDeepskyOpenClaw({
-      apiKey: apiKey.apiKey,
+      apiKey: apiKeyValue,
       models: models.map((model) => ({
         id: model.shortName,
         name: model.displayName,
@@ -90,22 +182,96 @@ export async function setupOpenClawAction(
       selectedModelId,
     });
 
+    if (!walletSetupChecked) {
+      walletInstall = options.skipWalletInstall
+        ? createSkippedWalletResult(config.walletMcpUrl, "Skipped by --skip-wallet-install.")
+        : await ensureWalletSetupForOpenClaw({
+            interactive,
+            walletMcpUrl: config.walletMcpUrl,
+            requestTimeoutMs: config.requestTimeoutMs,
+          });
+      walletSetupChecked = true;
+    }
+
+    let skillInstall:
+      | {
+          success: true;
+          label: string;
+          repositoryUrls: string[];
+          skillName: string;
+          commands: string[];
+        }
+      | {
+          success: false;
+          error: string;
+          label: string;
+          repositoryUrls: string[];
+          skillName: string | null;
+        }
+      | {
+          success: null;
+          skipped: true;
+        };
+
+    const shouldInstallSkill = !options.skipSkillInstall;
+    const skillInstallSpinner =
+      interactive && shouldInstallSkill ? createSpinner() : null;
+
+    if (!shouldInstallSkill) {
+      skillInstall = {
+        success: null,
+        skipped: true,
+      };
+    } else {
+      const skillRepositoryUrls = normalizeSkillRepositoryUrls(options.skillRepo);
+      try {
+        skillInstallSpinner?.start(DEFAULT_SETUP_SKILL_INSTALL_LABEL);
+        const installedSkill = await installSkillsFromRepositories({
+          repositoryUrls: skillRepositoryUrls,
+        });
+        skillInstallSpinner?.stop(DEFAULT_SETUP_SKILL_INSTALL_LABEL);
+        skillInstall = {
+          success: true,
+          label: installedSkill.label,
+          repositoryUrls: installedSkill.repositoryUrls,
+          skillName: installedSkill.skillName,
+          commands: installedSkill.commands,
+        };
+      } catch (error) {
+        skillInstallSpinner?.error(`${DEFAULT_SETUP_SKILL_INSTALL_LABEL} failed`);
+        skillInstall = {
+          success: false,
+          error: toErrorMessage(error),
+          label: DEFAULT_SETUP_SKILL_INSTALL_LABEL,
+          repositoryUrls: skillRepositoryUrls,
+          skillName: "all skills",
+        };
+      }
+    }
+
     const result = {
       success: true,
       alias,
       apiKeyId,
+      apiKeySource,
       modelCount: configResult.modelCount,
       configPath: configResult.configPath,
       switchedModel: configResult.selectedModelRef ?? null,
       selectedModelId: selectedModelId ?? null,
-      inputPriceRange: {
-        low: inputPriceRange.low,
-        high: inputPriceRange.high,
-      },
-      outputPriceRange: {
-        low: outputPriceRange.low,
-        high: outputPriceRange.high,
-      },
+      walletInstall,
+      inputPriceRange: inputPriceRange
+        ? {
+            low: inputPriceRange.low,
+            high: inputPriceRange.high,
+          }
+        : null,
+      outputPriceRange: outputPriceRange
+        ? {
+            low: outputPriceRange.low,
+            high: outputPriceRange.high,
+          }
+        : null,
+      skillInstall,
     };
 
     if (options.json) {
@@ -120,16 +286,53 @@ export async function setupOpenClawAction(
     if (!interactive) {
       console.log("OpenClaw Deepsky provider configured.");
     }
-    console.log(`API Key Alias: ${alias}`);
-    console.log(`API Key ID: ${apiKeyId}`);
-    console.log(`Input Price Range: ${inputPriceRange.low}-${inputPriceRange.high}`);
-    console.log(`Output Price Range: ${outputPriceRange.low}-${outputPriceRange.high}`);
     console.log(`Config Path: ${configResult.configPath}`);
     console.log(`Imported Models: ${configResult.modelCount}`);
     if (configResult.selectedModelRef) {
       console.log(`Primary Model: ${configResult.selectedModelRef}`);
     } else {
       console.log("Primary Model: unchanged");
+    }
+    console.log(`API Key Source: ${apiKeySource}`);
+    if (alias) {
+      console.log(`API Key Alias: ${alias}`);
+    }
+    if (apiKeyId) {
+      console.log(`API Key ID: ${apiKeyId}`);
+    }
+    if (inputPriceRange) {
+      console.log(`Input Price Range: ${inputPriceRange.low}-${inputPriceRange.high}`);
+    }
+    if (outputPriceRange) {
+      console.log(`Output Price Range: ${outputPriceRange.low}-${outputPriceRange.high}`);
+    }
+    if (walletInstall.success === true) {
+      console.log(`Wallet Ready: ${walletInstall.message}`);
+      if (walletInstall.action === "installed") {
+        if (walletInstall.initialOwnerPassword) {
+          console.log(`Wallet Initial Password: ${walletInstall.initialOwnerPassword}`);
+          console.log(
+            "Wallet Password Rotation: change the initial Owner password immediately after the first login.",
+          );
+        } else {
+          console.log(
+            "Wallet Initial Password: unavailable; check the wallet startup logs or owner notice file if this was a reused runtime volume.",
+          );
+        }
+      }
+    } else if (walletInstall.success === false) {
+      console.error(`Wallet Ready failed: ${walletInstall.error}`);
+    } else if (walletInstall.success === null) {
+      console.log(`Wallet Ready: ${walletInstall.message}`);
+    }
+    if (skillInstall.success === true) {
+      console.log(
+        `${skillInstall.label}: ${skillInstall.repositoryUrls.join(", ")} (global copy)`,
+      );
+    } else if (skillInstall.success === null) {
+      console.log(`${DEFAULT_SETUP_SKILL_INSTALL_LABEL}: skipped`);
+    } else {
+      console.error(`${skillInstall.label} failed: ${skillInstall.error}`);
     }
   } catch (error) {
     if (options.json) {
@@ -155,6 +358,122 @@ function createDefaultApiKeyAlias(): string {
   }
 
   return `openclaw-${suffix}`;
+}
+
+function isWalletBootstrapCandidate(error: unknown): boolean {
+  const message = toErrorMessage(error);
+  return message.includes("Unable to connect to wallet MCP at");
+}
+
+function createSkippedWalletResult(walletMcpUrl: string, message: string): WalletSetupResult {
+  return {
+    success: null,
+    skipped: true,
+    message,
+    walletMcpUrl,
+  };
+}
+
+async function ensureWalletSetupForOpenClaw(input: {
+  interactive: boolean;
+  walletMcpUrl: string;
+  requestTimeoutMs: number;
+}): Promise<WalletSetupResult> {
+  try {
+    const inspection = await inspectSuperiseAgentWallet({
+      walletMcpUrl: input.walletMcpUrl,
+      requestTimeoutMs: input.requestTimeoutMs,
+    });
+
+    if (inspection.status === "unsupported") {
+      return createSkippedWalletResult(inspection.walletMcpUrl, inspection.message);
+    }
+
+    if (inspection.status === "running") {
+      return {
+        success: true,
+        action: "already-running",
+        message: inspection.message,
+        walletMcpUrl: inspection.walletMcpUrl,
+        initialOwnerPassword: null,
+      };
+    }
+
+    if (inspection.status === "unhealthy") {
+      return {
+        success: false,
+        error: inspection.message,
+        walletMcpUrl: inspection.walletMcpUrl,
+      };
+    }
+
+    const confirmationMessage = inspection.status === "not-installed"
+      ? "Install SupeRISE Agent Wallet with Docker now"
+      : "Start the installed SupeRISE Agent Wallet container now";
+    const spinnerMessage = inspection.status === "not-installed"
+      ? "Installing SupeRISE Agent Wallet..."
+      : "Starting SupeRISE Agent Wallet...";
+    const declinedMessage = inspection.status === "not-installed"
+      ? "User declined SupeRISE Agent Wallet installation."
+      : "User declined starting the existing SupeRISE Agent Wallet container.";
+
+    const approved = input.interactive
+      ? await promptConfirmValue(confirmationMessage, true)
+      : true;
+    if (!approved) {
+      return createSkippedWalletResult(inspection.walletMcpUrl, declinedMessage);
+    }
+
+    const walletSpinner = input.interactive ? createSpinner() : null;
+    try {
+      walletSpinner?.start(spinnerMessage);
+      const ensuredWallet = await ensureSuperiseAgentWallet({
+        walletMcpUrl: input.walletMcpUrl,
+        requestTimeoutMs: input.requestTimeoutMs,
+      });
+      walletSpinner?.stop(ensuredWallet.message);
+      if (ensuredWallet.action === "skipped") {
+        return createSkippedWalletResult(ensuredWallet.walletMcpUrl, ensuredWallet.message);
+      }
+      return {
+        success: true,
+        action: ensuredWallet.action,
+        message: ensuredWallet.message,
+        walletMcpUrl: ensuredWallet.walletMcpUrl,
+        initialOwnerPassword: ensuredWallet.initialOwnerPassword,
+      };
+    } catch (error) {
+      walletSpinner?.error("Failed to prepare SupeRISE Agent Wallet");
+      return {
+        success: false,
+        error: toErrorMessage(error),
+        walletMcpUrl: input.walletMcpUrl,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: toErrorMessage(error),
+      walletMcpUrl: input.walletMcpUrl,
+    };
+  }
+}
+
+function normalizeSkillRepositoryUrls(extraRepositoryUrl?: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const repositoryUrl of [...DEFAULT_SETUP_SKILL_REPOSITORY_URLS, extraRepositoryUrl ?? ""]) {
+    const normalized = repositoryUrl.trim();
+    if (normalized.length === 0 || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
 }
 
 function parsePriceRange(input: string): { low: number; high: number } {

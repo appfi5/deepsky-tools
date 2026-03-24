@@ -18,7 +18,7 @@ import { readJsonFile, writeJsonFile } from "../../storage/json-store";
 import type { BalanceStatus, ModelWithPricing } from "../../services/platform-types";
 import { WalletMcpClient } from "../../services/wallet-mcp";
 import { MarketAuthService } from "../../services/platform-auth";
-import { MarketClient } from "../../services/superise-market";
+import { MarketClient } from "../../services/deepsky-market";
 import { PendingOrderStore } from "../../services/pending-orders";
 
 class ObservationStore {
@@ -295,7 +295,7 @@ export function createDefaultSustainContext(options?: {
   fetchImpl?: typeof fetch;
 }) {
   const env = options?.env ?? process.env;
-  const baseDir = env.SUPERISE_SUSTAIN_HOME ?? env.SUPERISE_HOME;
+  const baseDir = env.DEEPSKY_SUSTAIN_HOME ?? env.DEEPSKY_HOME;
   const paths = createDefaultPaths(baseDir);
   const configStore = new SustainConfigStore(paths, env);
   const fetchImpl = options?.fetchImpl ?? fetch;

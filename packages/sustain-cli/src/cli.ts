@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { registerCleanCommands } from "./commands/clean";
 import { registerSetupCommands } from "./commands/setup";
 import { registerSustainCommands } from "./commands/sustain";
 import { PACKAGE_VERSION } from "./utils/constants";
@@ -23,8 +24,14 @@ const setupCommand = program
   .description("Setup integrations for Deepsky")
   .showHelpAfterError();
 
+const cleanCommand = program
+  .command("clean")
+  .description("Clean Deepsky integrations")
+  .showHelpAfterError();
+
 registerSustainCommands(sustainCommand);
 registerSetupCommands(setupCommand);
+registerCleanCommands(cleanCommand);
 
 program.parseAsync(process.argv).catch((error) => {
   const json = process.argv.includes("--json");

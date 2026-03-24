@@ -1,7 +1,11 @@
 {
-  "name": "@deepsky/sustain-cli",
+  "name": "@deepsky/cli",
   "version": "0.0.1",
   "packageManager": "bun@1.3.9",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:appfi5/deepsky-tools.git"
+  },
   "type": "module",
   "main": "./dist/lib.cjs",
   "module": "./dist/lib.js",

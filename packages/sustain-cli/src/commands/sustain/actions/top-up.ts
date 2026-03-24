@@ -1,12 +1,15 @@
-import { getSustainContext, printJson } from "../helpers";
+import { ensureRetryOrdersJob, getSustainContext, printJson } from "../helpers";
 
 export async function topUpAction(
   amount: string,
   options: { dryRun?: boolean; json?: boolean } = {},
 ): Promise<void> {
   const result = await getSustainContext().engine.topUp(amount, options.dryRun ?? false);
+  const retryJob = result.savedForRetry ? await ensureRetryOrdersJob() : null;
+  const output = retryJob ? { ...result, retryJob } : result;
+
   if (options.json) {
-    printJson(result);
+    printJson(output);
     if (!result.success) {
       process.exitCode = 1;
     }
@@ -27,6 +30,10 @@ export async function topUpAction(
     }
     if (result.savedForRetry) {
       console.error("Transfer succeeded but submit-tx-hash failed. The order was saved for retry.");
+    }
+    if (retryJob) {
+      const writer = retryJob.warning ? console.error : console.log;
+      writer(retryJob.message);
     }
     process.exitCode = 1;
     return;
@@ -54,5 +61,9 @@ export async function topUpAction(
   }
   if (typeof result.newBalance === "number") {
     console.log(`New Balance: ${result.newBalance}`);
+  }
+  if (retryJob) {
+    const writer = retryJob.warning ? console.error : console.log;
+    writer(retryJob.message);
   }
 }

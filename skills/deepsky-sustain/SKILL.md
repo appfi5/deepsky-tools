@@ -15,7 +15,7 @@ Before using any sustain command:
 2. If the command is missing or unusable, install the published CLI globally:
 
 ```bash
-npm install -g @deepsky/sustain-cli
+npm install -g @deepsky/cli
 deepsky sustain --help
 ```
 
@@ -84,6 +84,9 @@ Map intent to commands like this:
 - "Retry failed top-up orders" -> `deepsky sustain retry-orders --json`
 - "Set up recurring sustain checks" -> `deepsky sustain setup openclaw`
 - "Install sustain cron jobs" -> `deepsky sustain setup openclaw`
+- "Clean OpenClaw setup" -> `deepsky clean openclaw`
+- "Remove the Deepsky provider only" -> `deepsky clean openclaw --provider-only`
+- "Remove sustain cron jobs only" -> `deepsky clean openclaw --jobs-only`
 - "Clear your login" -> `deepsky sustain logout`
 
 ## Observe
@@ -110,7 +113,10 @@ deepsky sustain top-up <amount> --json
 deepsky sustain retry-orders --json
 deepsky sustain setup openclaw
 deepsky sustain setup openclaw --json
-deepsky sustain setup openclaw --tick-every 5m --retry-every 10m --session isolated
+deepsky sustain setup openclaw --tick-every 20m --retry-every 10m --session isolated
+deepsky clean openclaw
+deepsky clean openclaw --provider-only
+deepsky clean openclaw --jobs-only
 deepsky sustain config set <key> <value>
 deepsky sustain config unset <key>
 deepsky sustain config reset
@@ -123,6 +129,7 @@ Follow these rules:
 - Let wallet-side policy enforce transfer limits. If the wallet rejects the amount, report the wallet error directly.
 - Use `top-up` for recharge because it creates the order, transfers CKB, and submits the tx hash as one flow.
 - Use `retry-orders` when transfer likely succeeded but platform-side submission or finalization did not complete cleanly.
+- Use `deepsky clean openclaw` when the user wants to remove the Deepsky provider config, Deepsky sustain jobs, or both.
 - Use `logout` to clear stale local auth state.
 - Keep requested CKB, credited platform amount, and resulting balance separate in your reasoning and reporting.
 
@@ -201,8 +208,8 @@ Guidelines:
 When the user asks for recurring monitoring, automatic keepalive, or a timed sustain loop:
 
 - Prefer `deepsky sustain setup openclaw` for one-click recurring sustain setup when OpenClaw is available.
-- The default setup installs two jobs: a keepalive review loop and a retry-orders loop.
-- Use `--tick-every`, `--retry-every`, and `--session` if the user asks for a different cadence or OpenClaw target.
+- The default setup installs the keepalive review loop. The retry-orders loop is scheduled only when a top-up enters pending-retry state, and is removed once pending orders are cleared or escalated to manual review.
+- Use `--tick-every` for a different initial health-check cadence, and `--retry-every` or `--session` if the user asks for a different retry cadence or OpenClaw target when retry scheduling is needed.
 - Keep the scheduled loop focused on observe -> decide -> act, not on ad hoc wallet transfers.
 - Only rely on automatic `top-up` inside the scheduled loop when the user explicitly delegated autonomous recharge.
 - If OpenClaw is unavailable or the user explicitly wants app-managed scheduling, fall back to app automation instead.
@@ -216,7 +223,7 @@ deepsky sustain setup openclaw
 Customized OpenClaw setup:
 
 ```bash
-deepsky sustain setup openclaw --tick-every 15m --retry-every 30m --session isolated
+deepsky sustain setup openclaw --retry-every 30m --session isolated
 ```
 
 If the user explicitly asks for `--session main`, still use `setup openclaw`, but remember that current OpenClaw requires main-session jobs to be registered as system events instead of announced chat turns.

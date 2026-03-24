@@ -70,7 +70,7 @@ export type SustainCliConfig = {
 };
 
 export type SustainPaths = {
-  riseDir: string;
+  homeDir: string;
   sustainDir: string;
   configPath: string;
   marketSessionPath: string;

@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SustainCliConfig, SustainPaths } from "../types";
 
-export const PACKAGE_NAME = "@deepsky/sustain-cli";
+export const PACKAGE_NAME = "@deepsky/cli";
 export const PACKAGE_VERSION = "0.2.1";
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 export const MAX_PENDING_ORDER_RETRIES = 5;
@@ -27,10 +27,10 @@ export const DEFAULT_CONFIG: SustainCliConfig = {
   requestTimeoutMs: 30_000,
 };
 
-export function createDefaultPaths(baseDir = join(homedir(), ".superise")): SustainPaths {
+export function createDefaultPaths(baseDir = join(homedir(), ".deepsky")): SustainPaths {
   const sustainDir = join(baseDir, "sustain");
   return {
-    riseDir: baseDir,
+    homeDir: baseDir,
     sustainDir,
     configPath: join(sustainDir, "config.json"),
     marketSessionPath: join(baseDir, "market-session.json"),

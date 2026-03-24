@@ -65,7 +65,7 @@ export function registerSustainCommands(program: Command): void {
   setupCommand
     .command("openclaw")
     .description("Register OpenClaw cron jobs for sustain self-supervision")
-    .option("--tick-every <duration>", "Keep-alive review cadence", "5m")
+    .option("--tick-every <duration>", "Initial keep-alive review cadence", "20m")
     .option("--retry-every <duration>", "Retry-orders cadence", "10m")
     .option("--session <target>", "OpenClaw session target", "isolated")
     .option("--json", "Output as JSON")

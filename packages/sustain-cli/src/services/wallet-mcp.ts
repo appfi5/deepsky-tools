@@ -118,7 +118,7 @@ export class WalletMcpClient {
     } catch (error) {
       if (!connected) {
         throw new Error(
-          `Unable to connect to wallet MCP at ${config.walletMcpUrl}. Make sure the wallet service is running and that the URL is correct. You can override it with \`deepsky sustain config set walletMcpUrl <url>\` or the \`SUPERISE_WALLET_MCP_URL\` environment variable. Root cause: ${toErrorMessage(error)}`,
+          `Unable to connect to wallet MCP at ${config.walletMcpUrl}. Make sure the wallet service is running and that the URL is correct. You can override it with \`deepsky sustain config set walletMcpUrl <url>\` or the \`DEEPSKY_WALLET_MCP_URL\` environment variable. Root cause: ${toErrorMessage(error)}`,
         );
       }
 

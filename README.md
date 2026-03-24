@@ -7,7 +7,7 @@ Deepsky Tools is a small repository for sustain operations. It packages the `dee
 - A standalone `deepsky sustain` CLI for Deepsky sustain work
 - An installable `deepsky-sustain` skill that teaches an agent how to run the sustain loop
 - Interactive OpenClaw provider setup for Deepsky models
-- One-click OpenClaw sustain setup for recurring reviews and retry jobs
+- One-click OpenClaw sustain setup for recurring reviews, plus on-demand retry jobs for abnormal top-up orders
 
 ## Quick Start
 
@@ -22,11 +22,11 @@ This repository currently provides one installable skill:
 Install it directly from this repository:
 
 ```bash
-npx skills add https://github.com/appfi5/superise-market-tools --list
-npx skills add https://github.com/appfi5/superise-market-tools --skill deepsky-sustain
+npx --yes skills add https://github.com/appfi5/deepsky-tools.git --list
+npx --yes skills add https://github.com/appfi5/deepsky-tools.git --global --copy --yes
 ```
 
-If your client uses a global skill directory, add `-g`. Restart the client after installation so the new skill is loaded.
+The recommended install uses global copy mode without interactive prompts. Restart the client after installation so the new skill is loaded.
 
 After the skill is installed, a prompt like this should be enough:
 
@@ -37,11 +37,11 @@ After the skill is installed, a prompt like this should be enough:
 The CLI is intended to be distributed as an npm package:
 
 ```bash
-npm install -g @deepsky/sustain-cli
+npm install -g @deepsky/cli
 deepsky sustain --help
 ```
 
-The skill should treat that install as a preflight dependency. If `deepsky sustain` is not available, the agent should install `@deepsky/sustain-cli` globally and verify the command before continuing.
+The skill should treat that install as a preflight dependency. If `deepsky sustain` is not available, the agent should install `@deepsky/cli` globally and verify the command before continuing.
 
 ### 3. Common Commands
 
@@ -52,11 +52,14 @@ deepsky sustain top-up <amount>
 deepsky sustain retry-orders --json
 deepsky setup openclaw
 deepsky sustain setup openclaw
+deepsky clean openclaw
 ```
 
-`deepsky setup openclaw` configures OpenClaw to use Deepsky as a custom provider. It reuses the existing wallet-based login flow, queries available models, creates a model API key, writes `models.providers.deepsky` into `~/.openclaw/openclaw.json`, and can optionally switch the active OpenClaw primary model.
+`deepsky setup openclaw` configures OpenClaw to use Deepsky as a custom provider first. If you already have a Deepsky API key, pass `--api-key <key>` or set `DEEPSKY_OPENCLAW_API_KEY`; otherwise setup creates one through wallet login. The wallet step now always runs unless you pass `--skip-wallet-install`: with the default local wallet MCP endpoint `http://127.0.0.1:18799/mcp`, setup checks the SupeRISE Agent Wallet state and in interactive mode asks whether to install it when missing, asks whether to start it when the Docker container exists but is stopped, and reports that it is already installed when it is already running. When setup performs a fresh install, it also surfaces the one-time initial Owner password so you can rotate it immediately after the first login. After provider setup it writes `models.providers.deepsky` into `~/.openclaw/openclaw.json`, can optionally switch the active OpenClaw primary model, and runs `Install skills`, which silently installs all skills from both `https://github.com/appfi5/deepsky-tools.git` and `https://github.com/appfi5/superise-for-agent` in global copy mode. Use `--skip-wallet-install` to skip the wallet setup step, `--skip-skill-install` to disable `Install skills`, or `--skill-repo <url>` to add one more repository to that install step.
 
-`deepsky sustain setup openclaw` is separate. It only registers the recurring sustain OpenClaw jobs.
+`deepsky sustain setup openclaw` is separate. It registers the recurring sustain health-check job, with an adaptive cadence that stretches to `2h` when healthy, tightens to `1h` when low, and runs every `20m` when critical. Retry jobs for abnormal top-up orders are created on demand and automatically cleaned up after pending orders are resolved or escalated for manual review.
+
+`deepsky clean openclaw` removes the Deepsky custom provider from `~/.openclaw/openclaw.json` and clears Deepsky sustain cron jobs. Use `--provider-only` or `--jobs-only` when you want a narrower cleanup.
 
 ## Runtime Assumptions
 
@@ -64,7 +67,7 @@ deepsky sustain setup openclaw
 - Market login depends on wallet identity and signing support
 - Top-up amount limits are enforced by the wallet side, not by local CLI rules
 
-The current compatibility local state directory is still `~/.superise`, and the existing `SUPERISE_*` environment variables remain supported during this rename phase.
+The default local state directory is `~/.deepsky`. You can override storage with `DEEPSKY_SUSTAIN_HOME` or `DEEPSKY_HOME` when needed.
 
 ## Development
 
