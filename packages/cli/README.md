@@ -42,6 +42,8 @@ Recommended sustain loop:
 6. If you want recurring self-supervision, run `deepsky sustain setup openclaw`.
 
 When status is `critical`, do not defer the immediate top-up just because you also plan to install the recurring keep-alive loop.
+After a critical top-up, re-run `deepsky sustain health-check --json`; if the account is still `critical`, choose a larger amount and top up again instead of waiting for the next scheduled review.
+When `exchangeAmount`, `amountCkb`, and `newBalance` are available, use that observed recharge result to estimate how much additional CKB is needed to get the account above the critical threshold instead of guessing blindly.
 
 `deepsky sustain setup openclaw` registers a keepalive review loop that starts at `20m` and then retunes itself to `2h` when healthy, `1h` when low, and `20m` when critical. Pending-order retry is now on-demand: the retry job is created only after a top-up lands in pending-retry state, and it is removed again after pending orders are cleared or escalated to manual review. The default OpenClaw target is `isolated` so the jobs can announce results back to chat. Use `--tick-every` to change the initial health-check cadence, and `--retry-every` or `--session` to customize the retry job when it is needed.
 

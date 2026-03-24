@@ -32,6 +32,29 @@ Do not assume a local workspace checkout is already wired into `PATH`. The suppo
 - Prefer explicit sustain commands over ad hoc wallet transfers for recharge.
 - Report wallet-side auth dependencies clearly instead of inventing local workarounds.
 
+## Do Not Mix Balance Domains
+
+This distinction is mandatory. Treat it as a hard rule, not as a stylistic preference.
+
+- `deepsky sustain health-check --json` reports the Deepsky platform-side account balance.
+- `criticalBalance` and `lowBalance` are thresholds for that Deepsky platform balance.
+- `deepsky sustain top-up <amount>` takes a wallet-side CKB amount as input.
+- SupeRISE wallet CKB and Deepsky platform balance are different units and different ledgers.
+
+Never do these things:
+
+- Never compare wallet CKB directly against `criticalBalance` or `lowBalance`.
+- Never describe platform balance as if it were CKB.
+- Never assume `1 CKB == 1` unit of Deepsky balance.
+- Never say a recharge was "too small" only from the CKB amount without checking `exchangeAmount`, `newBalance`, or a fresh `health-check`.
+
+Always do these things:
+
+- Use `health-check.balance`, `criticalBalance`, and `lowBalance` for platform-side health decisions.
+- Use CKB only as the transfer input for `top-up`.
+- Use `exchangeAmount` and `newBalance` to judge how much platform balance a recharge actually produced.
+- If the post-top-up state is still `critical`, estimate the next required CKB amount from the observed recharge result instead of guessing blindly.
+
 ## Units And Money Semantics
 
 Do not mix up account balance and recharge input units.
@@ -140,7 +163,9 @@ Follow these rules:
 - Choose a top-up amount based on the user's intent and current balance posture.
 - Let wallet-side policy enforce transfer limits. If the wallet rejects the amount, report the wallet error directly.
 - Use `top-up` for recharge because it creates the order, transfers CKB, and submits the tx hash as one flow.
+- In autonomous loops, prefer `deepsky sustain top-up <amount> --json` so you can read `exchangeAmount`, `amountCkb`, and `newBalance` directly.
 - If status is `critical`, do not stop after only installing recurring checks or retuning cadence. Handle the immediate top-up first, then schedule future reviews.
+- After each critical top-up, re-run `deepsky sustain health-check --json`. If the account is still `critical`, choose a larger amount and top up again instead of waiting for the next scheduled pass.
 - Use `retry-orders` when transfer likely succeeded but platform-side submission or finalization did not complete cleanly.
 - Use `deepsky clean openclaw` when the user wants to remove the Deepsky provider config, Deepsky sustain jobs, or both.
 - Use `logout` to clear stale local auth state.
@@ -154,12 +179,15 @@ When the user delegates self-supervision:
 2. Run `deepsky sustain health-check --json`.
 3. Run `deepsky sustain forecast --json`.
 4. If balance is low but not critical, run `deepsky sustain list-models --json` when pricing context would help the preventive top-up decision.
-5. If balance is critical or runway is too short, choose an amount and run `deepsky sustain top-up <amount>` immediately.
-6. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
-7. If OpenClaw is not yet configured for Deepsky, run `deepsky setup openclaw` first.
-8. If recurring supervision is expected, run `deepsky sustain setup openclaw`.
-9. If a recharge looked partial, run `deepsky sustain retry-orders --json`.
-10. Report the decision and the reason.
+5. If balance is critical or runway is too short, choose an amount and run `deepsky sustain top-up <amount> --json` immediately.
+6. Use `exchangeAmount`, `amountCkb`, `newBalance`, and the critical threshold to estimate whether the recharge was large enough to leave `critical`.
+7. Re-run `deepsky sustain health-check --json` after each critical top-up if `newBalance` is unavailable or if you need to confirm the post-top-up status.
+8. If status is still `critical`, estimate the next required CKB amount from the observed credit-per-CKB ratio (`exchangeAmount / amountCkb`), round up with safety margin, and top up again immediately.
+9. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
+10. If OpenClaw is not yet configured for Deepsky, run `deepsky setup openclaw` first.
+11. If recurring supervision is expected, run `deepsky sustain setup openclaw`.
+12. If a recharge looked partial, run `deepsky sustain retry-orders --json`.
+13. Report the decision and the reason.
 
 ## Threshold Strategy
 
@@ -173,6 +201,8 @@ Extra rules:
 
 - Compare thresholds against platform balance only, never against wallet CKB.
 - A recharge request is expressed in CKB, but the success criterion is whether account balance recovers after exchange-rate conversion.
+- If the first critical top-up still leaves the account in `critical`, do not wait for the next cadence. Re-check immediately and continue the top-up loop until status leaves `critical` or a wallet/platform failure blocks you.
+- When `exchangeAmount`, `amountCkb`, and `newBalance` are available, estimate the next required CKB amount from the observed credit-per-CKB ratio instead of guessing from scratch.
 - If the wallet rejects the requested CKB amount, surface the wallet rejection exactly and adjust from there instead of inventing a local max.
 - If forecast shows the runway is too short, treat that as justification to act more aggressively even if the current status is only `low`.
 - Only interrupt the user when autonomy is blocked: wallet failures, platform failures, authentication failures, or manual-review situations.
@@ -213,6 +243,8 @@ Guidelines:
 - Do not always choose the smallest possible amount.
 - Prefer enough runway for the user's near-term usage.
 - If the user is actively relying on the agent, bias toward fewer future interruptions.
+- In `critical`, choose an amount that is likely to move the account out of `critical` after exchange-rate conversion, not an amount that merely produces some positive recharge.
+- After an insufficient critical top-up, estimate the next amount from `exchangeAmount / amountCkb`, then round up with margin so the expected credited amount should land above the remaining gap to the critical threshold.
 - If the wallet rejects the amount, surface the exact rejection and adjust from there.
 - Remember that the top-up input is CKB while the target outcome is platform-side balance recovery after conversion.
 - When in doubt, choose the amount that reduces the chance of another near-term interruption rather than the amount that minimizes immediate spend.

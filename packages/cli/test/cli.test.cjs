@@ -988,7 +988,17 @@ test("buildSustainOpenClawJobs returns sustain tick and retry jobs", () => {
     jobs[0].message,
     /deepsky sustain setup openclaw --tick-every 20m --retry-every 11m --session isolated/,
   );
-  assert.match(jobs[0].message, /deepsky sustain top-up <amount>/);
+  assert.match(jobs[0].message, /deepsky sustain top-up <amount> --json/);
+  assert.match(
+    jobs[0].message,
+    /If `newBalance` is unavailable, re-run `deepsky sustain health-check --json` first/,
+  );
+  assert.match(
+    jobs[0].message,
+    /If status is still critical, estimate the next CKB amount from the observed credit-per-CKB ratio/,
+  );
+  assert.match(jobs[0].message, /exchangeAmount/, "tick job should mention exchangeAmount-based estimation");
+  assert.match(jobs[0].message, /credit-per-CKB ratio/, "tick job should mention estimation from observed recharge ratio");
   assert.doesNotMatch(jobs[0].message, /deepsky sustain retry-orders --json/);
   assert.match(jobs[1].message, /deepsky sustain retry-orders --json/);
 });
