@@ -271,7 +271,7 @@ export function buildSustainOpenClawTickJob(
       cadenceInstructions,
       "3. If balance is healthy, do nothing else.",
       "4. If balance is low, run `deepsky sustain list-models --json` if pricing context would help you decide next steps.",
-      "5. If balance is critical or runway is too short, choose a top-up amount yourself and run `deepsky sustain top-up <amount>`.",
+      "5. If balance is critical or runway is too short, immediately choose a top-up amount yourself and run `deepsky sustain top-up <amount>`. Do not end the review after only updating the next cadence.",
       "6. If the wallet rejects the transfer amount or policy, report the exact wallet-side error.",
       "7. Briefly announce important actions. Stay quiet if nothing needs doing.",
     ].join(" "),

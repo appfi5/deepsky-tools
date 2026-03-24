@@ -67,8 +67,9 @@ When that happens, do not stop at explaining commands. Start acting:
 1. Run the CLI preflight first.
 2. Gather the current state with `health-check`, `forecast`, and `config show`.
 3. Make an immediate decision based on balance, runway, and the user's risk tolerance.
-4. If ongoing supervision is wanted, register recurring checks with `deepsky sustain setup openclaw` unless the user explicitly prefers app automation.
-5. Report what you decided and why.
+4. If balance is critical or runway is too short, choose a top-up amount and execute `deepsky sustain top-up <amount>` immediately.
+5. If ongoing supervision is wanted and the immediate risk is already handled, register recurring checks with `deepsky sustain setup openclaw` unless the user explicitly prefers app automation.
+6. Report what you decided and why.
 
 The CLI does not do the planning for you. The agent remains responsible for observe -> decide -> act behavior.
 
@@ -139,6 +140,7 @@ Follow these rules:
 - Choose a top-up amount based on the user's intent and current balance posture.
 - Let wallet-side policy enforce transfer limits. If the wallet rejects the amount, report the wallet error directly.
 - Use `top-up` for recharge because it creates the order, transfers CKB, and submits the tx hash as one flow.
+- If status is `critical`, do not stop after only installing recurring checks or retuning cadence. Handle the immediate top-up first, then schedule future reviews.
 - Use `retry-orders` when transfer likely succeeded but platform-side submission or finalization did not complete cleanly.
 - Use `deepsky clean openclaw` when the user wants to remove the Deepsky provider config, Deepsky sustain jobs, or both.
 - Use `logout` to clear stale local auth state.
@@ -151,11 +153,11 @@ When the user delegates self-supervision:
 1. Run the CLI preflight.
 2. Run `deepsky sustain health-check --json`.
 3. Run `deepsky sustain forecast --json`.
-4. If balance is low, run `deepsky sustain list-models --json`.
-5. If OpenClaw is not yet configured for Deepsky, run `deepsky setup openclaw` first.
-6. If recurring supervision is expected, run `deepsky sustain setup openclaw`.
-7. If balance is critical or runway is too short, choose an amount and run `deepsky sustain top-up <amount>`.
-8. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
+4. If balance is low but not critical, run `deepsky sustain list-models --json` when pricing context would help the preventive top-up decision.
+5. If balance is critical or runway is too short, choose an amount and run `deepsky sustain top-up <amount>` immediately.
+6. If the wallet rejects the amount, report the wallet-side limit or policy instead of inventing local rules.
+7. If OpenClaw is not yet configured for Deepsky, run `deepsky setup openclaw` first.
+8. If recurring supervision is expected, run `deepsky sustain setup openclaw`.
 9. If a recharge looked partial, run `deepsky sustain retry-orders --json`.
 10. Report the decision and the reason.
 

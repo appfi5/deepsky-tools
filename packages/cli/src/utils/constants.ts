@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { SustainCliConfig, SustainPaths } from "../types";
 
 export const PACKAGE_NAME = "@superise/deepsky-cli";
-export const PACKAGE_VERSION = "0.2.1";
+export const PACKAGE_VERSION = "0.0.2";
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 export const MAX_PENDING_ORDER_RETRIES = 5;
 export const MAX_OBSERVATIONS = 500;
